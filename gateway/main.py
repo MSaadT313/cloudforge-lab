@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from uuid import UUID, uuid4
 
 import httpx
@@ -11,15 +11,30 @@ from fastapi.responses import JSONResponse, Response
 
 
 BACKENDS = [
-    ("backend-a", httpx.URL("http://127.0.0.1:8001")),
-    ("backend-b", httpx.URL("http://127.0.0.1:8002")),
+    (
+        "backend-a",
+        httpx.URL(
+            os.getenv("BACKEND_A_URL", "http://127.0.0.1:8001")
+        ),
+    ),
+    (
+        "backend-b",
+        httpx.URL(
+            os.getenv("BACKEND_B_URL", "http://127.0.0.1:8002")
+        ),
+    ),
 ]
 
 FORWARD_DEADLINE_SECONDS = 3.0
 
+HEALTH_CHECK_INTERVAL_SECONDS = 2.0
+HEALTH_CHECK_TIMEOUT_SECONDS = 1.0
+FAILURE_THRESHOLD = 2
+RECOVERY_THRESHOLD = 2
+
 BALANCING_POLICY = os.getenv(
     "BALANCING_POLICY",
-    "round_robin"
+    "round_robin",
 ).strip().lower()
 
 if BALANCING_POLICY not in {"round_robin", "least_outstanding"}:
@@ -69,48 +84,161 @@ def get_request_id(request: Request):
         return str(uuid4())
 
 
+async def check_backend_health(
+    app: FastAPI,
+    backend_id: str,
+    base_url: httpx.URL,
+    initial: bool = False,
+):
+    """Probe a backend and update its health state."""
+
+    healthy = False
+    status_code = None
+
+    try:
+        timeout = httpx.Timeout(HEALTH_CHECK_TIMEOUT_SECONDS)
+
+        response = await app.state.client.get(
+            base_url.join("/health/ready"),
+            timeout=timeout,
+        )
+
+        status_code = response.status_code
+        healthy = response.status_code == 200
+
+    except (httpx.RequestError, TimeoutError):
+        healthy = False
+
+    async with app.state.selection_lock:
+        state = app.state.backend_health[backend_id]
+
+        state["last_check"] = time.time()
+        state["last_status_code"] = status_code
+
+        if initial:
+            state["healthy"] = healthy
+            state["consecutive_failures"] = 0 if healthy else 1
+            state["consecutive_successes"] = 1 if healthy else 0
+
+        elif healthy:
+            state["consecutive_failures"] = 0
+            state["consecutive_successes"] += 1
+
+            if (
+                not state["healthy"]
+                and state["consecutive_successes"] >= RECOVERY_THRESHOLD
+            ):
+                state["healthy"] = True
+
+                logger.info(
+                    "backend_recovered backend=%s",
+                    backend_id,
+                )
+
+        else:
+            state["consecutive_successes"] = 0
+            state["consecutive_failures"] += 1
+
+            if (
+                state["healthy"]
+                and state["consecutive_failures"] >= FAILURE_THRESHOLD
+            ):
+                state["healthy"] = False
+
+                logger.warning(
+                    "backend_marked_unhealthy backend=%s",
+                    backend_id,
+                )
+
+        current_health = state["healthy"]
+
+    logger.info(
+        "health_check backend=%s healthy=%s status_code=%s "
+        "consecutive_failures=%s consecutive_successes=%s",
+        backend_id,
+        current_health,
+        status_code,
+        state["consecutive_failures"],
+        state["consecutive_successes"],
+    )
+
+
+async def health_monitor(app: FastAPI):
+    """Periodically check every configured backend."""
+
+    while True:
+        await asyncio.sleep(HEALTH_CHECK_INTERVAL_SECONDS)
+
+        await asyncio.gather(
+            *(
+                check_backend_health(app, backend_id, base_url)
+                for backend_id, base_url in BACKENDS
+            )
+        )
+
+
 async def select_backend(app: FastAPI):
     """
-    Select a backend and register one outstanding request.
+    Select a healthy backend and register one outstanding request.
 
-    The lock protects both selection and counter updates so
-    concurrent requests cannot select using stale counter values.
+    Selection and counter updates happen under the same lock.
     """
+
     async with app.state.selection_lock:
 
+        healthy_indices = [
+            index
+            for index, (backend_id, _) in enumerate(BACKENDS)
+            if app.state.backend_health[backend_id]["healthy"]
+        ]
+
+        if not healthy_indices:
+            return None
+
         if app.state.balancing_policy == "round_robin":
-            index = app.state.next_backend
+
+            start = app.state.next_backend
+
+            index = next(
+                (
+                    (start + offset) % len(BACKENDS)
+                    for offset in range(len(BACKENDS))
+                    if (start + offset) % len(BACKENDS)
+                    in healthy_indices
+                )
+            )
+
             app.state.next_backend = (index + 1) % len(BACKENDS)
 
         else:
             counters = app.state.outstanding_requests
 
-            minimum = min(counters.values())
+            minimum = min(
+                counters[BACKENDS[index][0]]
+                for index in healthy_indices
+            )
 
-            # Find all backends with the lowest outstanding count.
             candidates = [
                 index
-                for index, (backend_id, _) in enumerate(BACKENDS)
-                if counters[backend_id] == minimum
+                for index in healthy_indices
+                if counters[BACKENDS[index][0]] == minimum
             ]
 
-            # Rotate the tie-break starting position.
             start = app.state.tie_cursor
 
             index = next(
-                candidate
-                for offset in range(len(BACKENDS))
-                for candidate in [
+                (
                     (start + offset) % len(BACKENDS)
-                ]
-                if candidate in candidates
+                    for offset in range(len(BACKENDS))
+                    if (start + offset) % len(BACKENDS)
+                    in candidates
+                )
             )
 
             app.state.tie_cursor = (index + 1) % len(BACKENDS)
 
         backend_id, base_url = BACKENDS[index]
 
-        # Register the request before releasing the lock.
         app.state.outstanding_requests[backend_id] += 1
 
         outstanding = app.state.outstanding_requests[backend_id]
@@ -120,12 +248,13 @@ async def select_backend(app: FastAPI):
 
 async def release_backend(app: FastAPI, backend_id: str):
     """Release one outstanding-request slot."""
+
     async with app.state.selection_lock:
         app.state.outstanding_requests[backend_id] -= 1
 
-        # Defensive protection against negative counters.
         if app.state.outstanding_requests[backend_id] < 0:
             app.state.outstanding_requests[backend_id] = 0
+
             logger.error(
                 "negative_outstanding_counter backend=%s",
                 backend_id,
@@ -134,6 +263,7 @@ async def release_backend(app: FastAPI, backend_id: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     app.state.balancing_policy = BALANCING_POLICY
 
     app.state.next_backend = 0
@@ -146,20 +276,67 @@ async def lifespan(app: FastAPI):
         for backend_id, _ in BACKENDS
     }
 
+    app.state.backend_health = {
+        backend_id: {
+            "healthy": False,
+            "consecutive_failures": 0,
+            "consecutive_successes": 0,
+            "last_check": None,
+            "last_status_code": None,
+        }
+        for backend_id, _ in BACKENDS
+    }
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(3.0, connect=1.0),
         follow_redirects=False,
         trust_env=False,
     ) as client:
+
         app.state.client = client
 
         logger.info(
-            "gateway_started policy=%s backends=%s",
+            "gateway_starting policy=%s backends=%s",
             app.state.balancing_policy,
             list(app.state.outstanding_requests.keys()),
         )
 
-        yield
+        # Perform initial probes before accepting traffic.
+        await asyncio.gather(
+            *(
+                check_backend_health(
+                    app,
+                    backend_id,
+                    base_url,
+                    initial=True,
+                )
+                for backend_id, base_url in BACKENDS
+            )
+        )
+
+        logger.info(
+            "gateway_initial_health=%s",
+            {
+                backend_id: state["healthy"]
+                for backend_id, state in app.state.backend_health.items()
+            },
+        )
+
+        monitor_task = asyncio.create_task(
+            health_monitor(app),
+            name="cloudforge-health-monitor",
+        )
+
+        try:
+            yield
+
+        finally:
+            monitor_task.cancel()
+
+            with suppress(asyncio.CancelledError):
+                await monitor_task
+
+            logger.info("gateway_stopped")
 
 
 app = FastAPI(
@@ -171,11 +348,32 @@ app = FastAPI(
 )
 
 
+@app.get("/gateway/status")
+async def gateway_status(request: Request):
+
+    async with request.app.state.selection_lock:
+
+        return {
+            "policy": request.app.state.balancing_policy,
+            "backends": {
+                backend_id: {
+                    **state,
+                    "outstanding_requests": (
+                        request.app.state.outstanding_requests[backend_id]
+                    ),
+                }
+                for backend_id, state
+                in request.app.state.backend_health.items()
+            },
+        }
+
+
 @app.api_route(
     "/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
 )
 async def forward(request: Request):
+
     request_id = get_request_id(request)
 
     raw_path = request.scope["raw_path"]
@@ -185,31 +383,38 @@ async def forward(request: Request):
 
     request_body = await request.body()
 
-    backend_id, base_url, outstanding_at_dispatch = (
-        await select_backend(request.app)
-    )
+    selection = await select_backend(request.app)
 
-    target_url = base_url.copy_with(raw_path=raw_path)
+    if selection is None:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "No healthy backends available"},
+            headers={"X-Request-ID": request_id},
+        )
 
-    headers = filtered_headers(
-        request.headers.raw,
-        extra=(b"host", b"content-length", b"x-request-id"),
-    )
-
-    headers.append(
-        (b"x-request-id", request_id.encode("ascii"))
-    )
-
-    upstream_request = httpx.Request(
-        method=request.method,
-        url=target_url,
-        headers=headers,
-        content=request_body,
-    )
+    backend_id, base_url, outstanding_at_dispatch = selection
 
     started = time.perf_counter()
 
     try:
+        target_url = base_url.copy_with(raw_path=raw_path)
+
+        headers = filtered_headers(
+            request.headers.raw,
+            extra=(b"host", b"content-length", b"x-request-id"),
+        )
+
+        headers.append(
+            (b"x-request-id", request_id.encode("ascii"))
+        )
+
+        upstream_request = httpx.Request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=request_body,
+        )
+
         async with asyncio.timeout(FORWARD_DEADLINE_SECONDS):
             upstream = await request.app.state.client.send(
                 upstream_request
@@ -233,12 +438,14 @@ async def forward(request: Request):
         )
 
     except (TimeoutError, httpx.TimeoutException):
+
         response = JSONResponse(
             status_code=504,
             content={"detail": "Backend response timed out"},
         )
 
     except httpx.RequestError:
+
         response = JSONResponse(
             status_code=502,
             content={"detail": "Could not communicate with backend"},

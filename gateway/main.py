@@ -177,19 +177,24 @@ async def health_monitor(app: FastAPI):
         )
 
 
-async def select_backend(app: FastAPI):
+async def select_backend(app: FastAPI, excluded_backend_ids=None):
     """
-    Select a healthy backend and register one outstanding request.
+    Select a healthy, non-excluded backend and register one outstanding request.
 
     Selection and counter updates happen under the same lock.
     """
+
+    excluded_backend_ids = set(excluded_backend_ids or ())
 
     async with app.state.selection_lock:
 
         healthy_indices = [
             index
             for index, (backend_id, _) in enumerate(BACKENDS)
-            if app.state.backend_health[backend_id]["healthy"]
+            if (
+                app.state.backend_health[backend_id]["healthy"]
+                and backend_id not in excluded_backend_ids
+            )
         ]
 
         if not healthy_indices:
@@ -383,93 +388,204 @@ async def forward(request: Request):
 
     request_body = await request.body()
 
-    selection = await select_backend(request.app)
-
-    if selection is None:
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "No healthy backends available"},
-            headers={"X-Request-ID": request_id},
-        )
-
-    backend_id, base_url, outstanding_at_dispatch = selection
+    method = request.method.upper()
+    retry_allowed = method in {"GET", "HEAD"}
+    max_attempts = 2 if retry_allowed else 1
 
     started = time.perf_counter()
+    deadline = started + FORWARD_DEADLINE_SECONDS
+
+    excluded_backend_ids = set()
+    selected_backend_id = None
+    successful_backend_id = None
+    outstanding_at_dispatch = None
+    response = None
+    attempts = 0
 
     try:
-        target_url = base_url.copy_with(raw_path=raw_path)
-
-        headers = filtered_headers(
-            request.headers.raw,
-            extra=(b"host", b"content-length", b"x-request-id"),
-        )
-
-        headers.append(
-            (b"x-request-id", request_id.encode("ascii"))
-        )
-
-        upstream_request = httpx.Request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            content=request_body,
-        )
-
         async with asyncio.timeout(FORWARD_DEADLINE_SECONDS):
-            upstream = await request.app.state.client.send(
-                upstream_request
-            )
 
-        response = Response(
-            content=upstream.content,
-            status_code=upstream.status_code,
-        )
+            while attempts < max_attempts:
 
-        response.raw_headers.extend(
-            filtered_headers(
-                upstream.headers.raw,
-                extra=(
-                    b"content-length",
-                    b"content-encoding",
-                    b"x-request-id",
-                    b"x-backend-id",
-                ),
-            )
-        )
+                selection = await select_backend(
+                    request.app,
+                    excluded_backend_ids=excluded_backend_ids,
+                )
 
-    except (TimeoutError, httpx.TimeoutException):
+                if selection is None:
+
+                    if attempts == 0:
+                        response = JSONResponse(
+                            status_code=503,
+                            content={
+                                "detail": "No healthy backends available"
+                            },
+                        )
+                    else:
+                        response = JSONResponse(
+                            status_code=502,
+                            content={
+                                "detail": (
+                                    "Backend connection failed; "
+                                    "no alternate healthy backend available"
+                                )
+                            },
+                        )
+
+                    break
+
+                backend_id, base_url, outstanding_at_dispatch = selection
+
+                selected_backend_id = backend_id
+                excluded_backend_ids.add(backend_id)
+                attempts += 1
+
+                try:
+                    remaining = deadline - time.perf_counter()
+
+                    if remaining <= 0:
+                        raise TimeoutError
+
+                    target_url = base_url.copy_with(raw_path=raw_path)
+
+                    headers = filtered_headers(
+                        request.headers.raw,
+                        extra=(
+                            b"host",
+                            b"content-length",
+                            b"x-request-id",
+                        ),
+                    )
+
+                    headers.append(
+                        (b"x-request-id", request_id.encode("ascii"))
+                    )
+
+                    timeout = httpx.Timeout(
+                        remaining,
+                        connect=min(1.0, remaining),
+                    )
+
+                    upstream_request = (
+                        request.app.state.client.build_request(
+                            method=method,
+                            url=target_url,
+                            headers=headers,
+                            content=request_body,
+                            timeout=timeout,
+                        )
+                    )
+
+                    upstream = await request.app.state.client.send(
+                        upstream_request
+                    )
+
+                    response = Response(
+                        content=upstream.content,
+                        status_code=upstream.status_code,
+                    )
+
+                    successful_backend_id = backend_id
+
+                    response.raw_headers.extend(
+                        filtered_headers(
+                            upstream.headers.raw,
+                            extra=(
+                                b"content-length",
+                                b"content-encoding",
+                                b"x-request-id",
+                                b"x-backend-id",
+                                b"date",
+                                b"server",
+                            ),
+                        )
+                    )
+
+                except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+
+                    should_retry = (
+                        retry_allowed and attempts < max_attempts
+                    )
+
+                    logger.warning(
+                        "backend_connection_failure request_id=%s "
+                        "backend=%s attempt=%s retry=%s error=%s",
+                        request_id,
+                        backend_id,
+                        attempts,
+                        should_retry,
+                        type(exc).__name__,
+                    )
+
+                    if not should_retry:
+                        response = JSONResponse(
+                            status_code=502,
+                            content={
+                                "detail": (
+                                    "Could not establish connection "
+                                    "to backend"
+                                )
+                            },
+                        )
+
+                except httpx.TimeoutException:
+
+                    response = JSONResponse(
+                        status_code=504,
+                        content={
+                            "detail": "Backend response timed out"
+                        },
+                    )
+
+                except httpx.RequestError:
+
+                    response = JSONResponse(
+                        status_code=502,
+                        content={
+                            "detail": "Could not communicate with backend"
+                        },
+                    )
+
+                finally:
+                    await release_backend(
+                        request.app,
+                        backend_id,
+                    )
+
+                if response is not None:
+                    break
+
+                # A connection failure occurred on an eligible read.
+                # The next iteration can select only another backend.
+
+    except TimeoutError:
 
         response = JSONResponse(
             status_code=504,
-            content={"detail": "Backend response timed out"},
+            content={"detail": "Gateway forwarding deadline exceeded"},
         )
-
-    except httpx.RequestError:
-
-        response = JSONResponse(
-            status_code=502,
-            content={"detail": "Could not communicate with backend"},
-        )
-
-    finally:
-        await release_backend(request.app, backend_id)
 
     response.headers["X-Request-ID"] = request_id
-    response.headers["X-Backend-ID"] = backend_id
+
+    if successful_backend_id is not None:
+        response.headers["X-Backend-ID"] = successful_backend_id
 
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     response.headers["X-Gateway-Time-Ms"] = f"{elapsed_ms:.2f}"
 
     logger.info(
-        "gateway request_id=%s policy=%s backend=%s "
-        "outstanding_at_dispatch=%s method=%s path=%s "
-        "status=%s duration_ms=%.2f",
+        "gateway request_id=%s policy=%s "
+        "backend_attempted=%s backend_responded=%s "
+        "outstanding_at_dispatch=%s attempts=%s "
+        "method=%s path=%s status=%s duration_ms=%.2f",
         request_id,
         request.app.state.balancing_policy,
-        backend_id,
+        selected_backend_id,
+        successful_backend_id,
         outstanding_at_dispatch,
-        request.method,
+        attempts,
+        method,
         request.url.path,
         response.status_code,
         elapsed_ms,

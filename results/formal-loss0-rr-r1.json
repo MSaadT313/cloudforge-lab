@@ -1,0 +1,29 @@
+{
+    "url": "http://10.10.1.20:8000/users/",
+    "concurrency": 5,
+    "warmup_seconds": 10.0,
+    "measurement_seconds": 60.0,
+    "warmup_requests": 4425,
+    "measured_requests": 26320,
+    "successful_requests": 26320,
+    "failed_requests": 0,
+    "successful_rps": 438.667,
+    "error_rate_percent": 0.0,
+    "latency_ms": {
+        "mean": 11.388,
+        "p50": 11.001,
+        "p95": 14.358
+    },
+    "all_attempt_latency_ms": {
+        "mean": 11.388,
+        "p50": 11.001,
+        "p95": 14.358
+    },
+    "backend_distribution": {
+        "backend-b": 13160,
+        "backend-a": 13160
+    },
+    "status_distribution": {
+        "200": 26320
+    }
+}

@@ -1,0 +1,149 @@
+{
+    "condition": {
+        "impairment": "delay",
+        "configured_delay_ms": 100,
+        "policy": "round_robin",
+        "repetitions": 3,
+        "concurrency": 5,
+        "warmup_seconds": 10,
+        "measurement_seconds": 60,
+        "timeout_seconds": 5
+    },
+    "runs": {
+        "run_1": {
+            "url": "http://10.10.1.20:8000/users/",
+            "concurrency": 5,
+            "warmup_seconds": 10.0,
+            "measurement_seconds": 60.0,
+            "warmup_requests": 404,
+            "measured_requests": 2364,
+            "successful_requests": 2364,
+            "failed_requests": 0,
+            "successful_rps": 39.4,
+            "error_rate_percent": 0.0,
+            "latency_ms": {
+                "mean": 126.87,
+                "p50": 126.465,
+                "p95": 148.616
+            },
+            "all_attempt_latency_ms": {
+                "mean": 126.87,
+                "p50": 126.465,
+                "p95": 148.616
+            },
+            "backend_distribution": {
+                "backend-a": 1182,
+                "backend-b": 1182
+            },
+            "status_distribution": {
+                "200": 2364
+            }
+        },
+        "run_2": {
+            "url": "http://10.10.1.20:8000/users/",
+            "concurrency": 5,
+            "warmup_seconds": 10.0,
+            "measurement_seconds": 60.0,
+            "warmup_requests": 393,
+            "measured_requests": 2274,
+            "successful_requests": 2274,
+            "failed_requests": 0,
+            "successful_rps": 37.9,
+            "error_rate_percent": 0.0,
+            "latency_ms": {
+                "mean": 131.94,
+                "p50": 131.063,
+                "p95": 151.987
+            },
+            "all_attempt_latency_ms": {
+                "mean": 131.94,
+                "p50": 131.063,
+                "p95": 151.987
+            },
+            "backend_distribution": {
+                "backend-b": 1137,
+                "backend-a": 1137
+            },
+            "status_distribution": {
+                "200": 2274
+            }
+        },
+        "run_3": {
+            "url": "http://10.10.1.20:8000/users/",
+            "concurrency": 5,
+            "warmup_seconds": 10.0,
+            "measurement_seconds": 60.0,
+            "warmup_requests": 382,
+            "measured_requests": 2243,
+            "successful_requests": 2243,
+            "failed_requests": 0,
+            "successful_rps": 37.383,
+            "error_rate_percent": 0.0,
+            "latency_ms": {
+                "mean": 133.784,
+                "p50": 133.837,
+                "p95": 152.382
+            },
+            "all_attempt_latency_ms": {
+                "mean": 133.784,
+                "p50": 133.837,
+                "p95": 152.382
+            },
+            "backend_distribution": {
+                "backend-b": 1122,
+                "backend-a": 1121
+            },
+            "status_distribution": {
+                "200": 2243
+            }
+        }
+    },
+    "aggregate": {
+        "successful_rps": {
+            "mean": 38.228,
+            "sample_standard_deviation": 1.048,
+            "per_run": [
+                39.4,
+                37.9,
+                37.383
+            ]
+        },
+        "mean_latency_ms": {
+            "mean": 130.865,
+            "sample_standard_deviation": 3.58,
+            "per_run": [
+                126.87,
+                131.94,
+                133.784
+            ]
+        },
+        "p50_latency_ms": {
+            "mean": 130.455,
+            "sample_standard_deviation": 3.723,
+            "per_run": [
+                126.465,
+                131.063,
+                133.837
+            ]
+        },
+        "p95_latency_ms": {
+            "mean": 150.995,
+            "sample_standard_deviation": 2.07,
+            "per_run": [
+                148.616,
+                151.987,
+                152.382
+            ]
+        },
+        "successful_requests": {
+            "mean": 2293.667,
+            "sample_standard_deviation": 62.852,
+            "per_run": [
+                2364,
+                2274,
+                2243
+            ]
+        }
+    },
+    "all_runs_zero_errors": true
+}

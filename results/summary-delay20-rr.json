@@ -1,0 +1,65 @@
+{
+    "condition": {
+        "impairment": "delay",
+        "configured_delay_ms": 20,
+        "policy": "round_robin",
+        "concurrency": 5,
+        "warmup_seconds": 10,
+        "measurement_seconds": 60,
+        "timeout_seconds": 5
+    },
+    "repetitions": 3,
+    "runs": [
+        "formal-delay20-rr-r1",
+        "formal-delay20-rr-r2",
+        "formal-delay20-rr-r3"
+    ],
+    "statistics": {
+        "successful_rps": {
+            "mean": 145.517,
+            "sample_standard_deviation": 22.965,
+            "per_run_values": [
+                119.0,
+                158.583,
+                158.967
+            ]
+        },
+        "mean_latency_ms": {
+            "mean": 34.989,
+            "sample_standard_deviation": 6.066,
+            "per_run_values": [
+                41.993,
+                31.527,
+                31.446
+            ]
+        },
+        "p50_latency_ms": {
+            "mean": 32.544,
+            "sample_standard_deviation": 3.013,
+            "per_run_values": [
+                36.019,
+                30.945,
+                30.667
+            ]
+        },
+        "p95_latency_ms": {
+            "mean": 47.952,
+            "sample_standard_deviation": 17.59,
+            "per_run_values": [
+                68.263,
+                37.742,
+                37.85
+            ]
+        },
+        "successful_requests": {
+            "mean": 8731,
+            "sample_standard_deviation": 1377.894,
+            "per_run_values": [
+                7140,
+                9515,
+                9538
+            ]
+        }
+    },
+    "all_runs_zero_errors": true
+}

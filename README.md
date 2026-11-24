@@ -93,11 +93,12 @@ The topology also uses Linux bridges for the frontend, application, and database
 
 ### 3.4 Architecture Diagram
 
-The architecture diagram is maintained as a Mermaid source file:
+The architecture diagram is maintained as a Graphviz DOT source file and a rendered JPEG image:
 
-`docs/architecture.mmd`
+- `docs/cloudforge-architecture.dot` — editable architecture source.
+- `docs/cloudforge-architecture.jpg` — rendered architecture diagram.
 
-It represents the four network segments, two routers, client, gateway, application backends, shared PostgreSQL database, and health-monitoring communication.
+The diagram represents the four network segments, Linux bridges, network namespaces, two routers, client, gateway, application backends, and shared PostgreSQL database.
 
 ### 3.5 Communication Flow
 
@@ -436,7 +437,7 @@ The analysis identified:
 
 Gateway logs and status checks provide the corresponding backend unhealthy and recovered state transitions.
 
-The packet captures are retained as raw technical evidence. Annotated Wireshark screenshots and final packet-analysis documentation remain to be prepared for submission.
+The repository also contains 14 Wireshark screenshots in `results/evidence/`, covering the TCP handshake, HTTP request/response flow, gateway-to-backend communication, health probes, database communication, backend failure, and recovery. Verification logs for bounded retry and health-state transitions are retained alongside the screenshots.
 
 ## 8. Project Structure
 
@@ -458,10 +459,13 @@ cloudforge-lab/
 │   └── main.py
 │
 ├── docs/
-│   ├── architecture.mmd
-│   └── project-conversation.txt
+│   ├── ProjectReport.docx
+│   ├── cloudforge-architecture.dot
+│   └── cloudforge-architecture.jpg
 │
 ├── scripts/
+│   ├── setup_topology.sh
+│   ├── cleanup_topology.sh
 │   ├── workload.py
 │   └── analyze_results.py
 │
@@ -474,6 +478,7 @@ cloudforge-lab/
 │   │   └── validation.json
 │   │
 │   ├── evidence/
+│   │   ├── Wireshark screenshots (*.png, 14 files)
 │   │   ├── bounded-retry-verification.log
 │   │   └── health-transition-verification.log
 │   │
@@ -487,7 +492,6 @@ cloudforge-lab/
 │   ├── formal-*.json
 │   └── calibration-*.csv / calibration-*.json
 │
-├── .env
 ├── .gitignore
 ├── README.md
 └── requirements.txt
@@ -620,9 +624,9 @@ The gateway and backend processes run inside their respective namespaces. Postgr
 
 The topology has been manually constructed and verified on Ubuntu 26.04.1.
 
-**Important:** Automated, reproducible topology setup and cleanup scripts have not yet been completed. The localhost commands above are not a substitute for the routed deployment procedure.
+The repository includes `scripts/setup_topology.sh` and `scripts/cleanup_topology.sh` for creating and removing the named CloudForge network topology. The setup script checks for conflicting resources before creating namespaces, bridges, and interfaces. The cleanup script requires explicit confirmation before removing CloudForge resources.
 
-The exact namespace, interface, routing, database, and service configuration must be established before reproducing the full routed experiment environment.
+These scripts manage the network topology; they do not by themselves configure the database, launch all application services, or reproduce the complete formal experiment workflow. Follow the documented addressing plan and configure the local environment before running the routed deployment.
 
 ## 11. Verification
 
@@ -716,10 +720,10 @@ The validation includes request-count consistency, status-code totals, backend d
 | Statistical analysis | Completed and validated |
 | Four PCAPNG captures | Collected |
 | Wireshark packet inspection | Partially completed |
-| Annotated Wireshark screenshots | Pending |
-| Automated topology setup and cleanup scripts | Pending |
-| Fully reproducible routed deployment instructions | Pending |
-| Technical report (6–10 pages) | Pending |
+| Wireshark screenshots | 14 collected |
+| Topology setup and cleanup scripts | Implemented |
+| Fully reproducible routed deployment instructions | Partially documented |
+| Technical report | Prepared: `docs/ProjectReport.docx` |
 | Final demonstration recording | Pending |
 | Final reproducibility and submission review | Pending |
 
@@ -738,7 +742,7 @@ The project submission is intended to include:
 9. Relevant application code, scripts, logs, configuration files, and experiment results.
 10. AI-use disclosure according to course requirements.
 
-The formal experiment data, statistical summaries, evidence logs, and packet captures have been collected. Remaining work is identified in Section 12.
+The formal experiment data, statistical summaries, evidence logs, four packet captures, and 14 Wireshark screenshots are retained in the repository. The technical report is available at `docs/ProjectReport.docx`. Remaining work is identified in Section 12.
 
 ## 14. Limitations and Scope
 
@@ -774,7 +778,7 @@ The completed evaluation contains 63 formal runs covering delay, packet loss, ba
 
 The experimental results demonstrate how network conditions influence request throughput and latency, and how backend health management allows the gateway to continue serving traffic when one application server becomes unavailable.
 
-Remaining work focuses on automated topology reproducibility, annotated packet-analysis evidence, the final technical report, and demonstration preparation.
+Remaining work focuses on completing and checking the routed deployment reproduction instructions, preparing the final demonstration, and conducting the final reproducibility and submission review.
 
 ---
 

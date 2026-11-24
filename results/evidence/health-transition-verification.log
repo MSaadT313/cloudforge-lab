@@ -1,0 +1,41 @@
+CLOUDFORGE HEALTH TRANSITION EVIDENCE
+Captured: 2026-11-23
+
+Transition events:
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+WARNING:  backend_marked_unhealthy backend=backend-a
+INFO:     backend_recovered backend=backend-a
+
+Recent health checks:
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1367
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1368
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1294
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1369
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1295
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1370
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1296
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1371
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1297
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1298
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1372
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1373
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1299
+INFO:     health_check backend=backend-b healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1374
+INFO:     health_check backend=backend-a healthy=True status_code=200 consecutive_failures=0 consecutive_successes=1300

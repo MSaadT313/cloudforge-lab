@@ -1,0 +1,125 @@
+digraph CloudForge {
+    graph [
+        label="CloudForge — Software Load Balancer with Health Checks and Dynamic Traffic Distribution",
+        labelloc=t,
+        fontsize=20,
+        fontname="DejaVu Sans",
+        rankdir=TB,
+        nodesep=0.55,
+        ranksep=0.75,
+        pad=0.3,
+        compound=true,
+        splines=polyline
+    ];
+
+    node [
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#EAF2F8",
+        color="#34495E",
+        fontname="DejaVu Sans",
+        fontsize=10,
+        margin="0.16,0.10"
+    ];
+
+    edge [
+        fontname="DejaVu Sans",
+        fontsize=9,
+        color="#34495E",
+        arrowsize=0.7
+    ];
+
+    subgraph cluster_front {
+        label="Frontend Network — 10.10.1.0/24";
+        color="#2980B9";
+        style="rounded";
+
+        client [label="Client\ncf-client\n10.10.1.10"];
+        gateway [label="Software Gateway / Load Balancer\ncf-gateway\n10.10.1.20:8000\nRound Robin / Least Outstanding",
+                 fillcolor="#D5F5E3"];
+        front_bridge [label="Linux bridge\nbr-cf-front", shape=component,
+                      fillcolor="#FCF3CF"];
+        r1_front [label="Router R1 — cf-r1\n10.10.1.1"];
+
+        client -> front_bridge [dir=none];
+        gateway -> front_bridge [dir=none];
+        front_bridge -> r1_front [dir=none];
+    }
+
+    subgraph cluster_transit {
+        label="Transit Network — 10.10.2.0/30";
+        color="#7D3C98";
+        style="rounded";
+
+        r1_transit [label="R1 transit interface\n10.10.2.1"];
+        r2_transit [label="R2 transit interface\n10.10.2.2"];
+
+        r1_transit -> r2_transit [
+            dir=both,
+            label="Routed transit link"
+        ];
+    }
+
+    subgraph cluster_app {
+        label="Application Network — 10.10.3.0/24";
+        color="#239B56";
+        style="rounded";
+
+        app_bridge [label="Linux bridge\nbr-cf-app", shape=component,
+                    fillcolor="#FCF3CF"];
+        r2_app [label="Router R2 — cf-r2\n10.10.3.1"];
+        backend_a [label="Backend A\ncf-app-a\n10.10.3.10:8001"];
+        backend_b [label="Backend B\ncf-app-b\n10.10.3.11:8001"];
+
+        app_bridge -> r2_app [dir=none];
+        app_bridge -> backend_a [dir=none];
+        app_bridge -> backend_b [dir=none];
+    }
+
+    subgraph cluster_db {
+        label="Database Network — 10.10.4.0/24";
+        color="#D68910";
+        style="rounded";
+
+        db_bridge [label="Linux bridge\nbr-cf-db", shape=component,
+                   fillcolor="#FCF3CF"];
+        r2_db [label="Router R2 database interface\n10.10.4.1"];
+        postgres [label="PostgreSQL 18\nHost namespace\n10.10.4.10:5432",
+                  fillcolor="#FDEBD0"];
+
+        db_bridge -> r2_db [dir=none];
+        db_bridge -> postgres [dir=none];
+    }
+
+    r1_front -> r1_transit [dir=none, label="R1"];
+    r2_transit -> r2_app [dir=none, label="R2"];
+    r2_app -> r2_db [dir=none];
+
+    gateway -> backend_a [
+        style=dashed,
+        color="#2471A3",
+        label="HTTP via R1 and R2",
+        constraint=false
+    ];
+
+    gateway -> backend_b [
+        style=dashed,
+        color="#2471A3",
+        label="HTTP via R1 and R2",
+        constraint=false
+    ];
+
+    backend_a -> postgres [
+        style=dashed,
+        color="#B9770E",
+        label="SQLAlchemy / PostgreSQL",
+        constraint=false
+    ];
+
+    backend_b -> postgres [
+        style=dashed,
+        color="#B9770E",
+        label="SQLAlchemy / PostgreSQL",
+        constraint=false
+    ];
+}

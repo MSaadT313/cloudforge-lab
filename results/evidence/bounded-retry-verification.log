@@ -1,0 +1,7 @@
+WARNING:  backend_connection_failure request_id=8969353a-4f60-4313-af9f-6ed70804c430 backend=backend-a attempt=1 retry=True error=ConnectError
+INFO:     gateway request_id=8969353a-4f60-4313-af9f-6ed70804c430 policy=least_outstanding backend_attempted=backend-b backend_responded=backend-b outstanding_at_dispatch=1 attempts=2 method=GET path=/users/ status=200 duration_ms=22.27
+WARNING:  backend_connection_failure request_id=7f0f724a-3e8a-4372-829d-e591fbaf7532 backend=backend-a attempt=1 retry=False error=ConnectError
+INFO:     gateway request_id=7f0f724a-3e8a-4372-829d-e591fbaf7532 policy=least_outstanding backend_attempted=backend-a backend_responded=None outstanding_at_dispatch=1 attempts=1 method=POST path=/retry-safety-test status=502 duration_ms=5.50
+WARNING:  backend_connection_failure request_id=2002430a-6799-4723-9bae-63944ffebdab backend=backend-b attempt=1 retry=True error=ConnectError
+WARNING:  backend_connection_failure request_id=2002430a-6799-4723-9bae-63944ffebdab backend=backend-a attempt=2 retry=False error=ConnectError
+INFO:     gateway request_id=2002430a-6799-4723-9bae-63944ffebdab policy=least_outstanding backend_attempted=backend-a backend_responded=None outstanding_at_dispatch=1 attempts=2 method=GET path=/users/ status=502 duration_ms=14.92

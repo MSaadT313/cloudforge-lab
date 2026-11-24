@@ -1,0 +1,9 @@
+{
+  "source_files": 63,
+  "conditions": 21,
+  "repetitions_per_condition": 3,
+  "performance_conditions": 18,
+  "failure_recovery_conditions": 3,
+  "validation_errors": 0,
+  "output_directory": "results/analysis"
+}
